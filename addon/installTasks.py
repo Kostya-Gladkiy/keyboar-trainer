@@ -10,5 +10,5 @@ addonHandler.initTranslation()
 
 def onInstall():
 	for addon in addonHandler.getAvailableAddons():
-		if addon.manifest['name'] in ("keys", "Keys", "Keyboard simulator"):
+		if addon.manifest['name'] in ("keys", "Keys", "Keyboard simulator", "Keyboard trainer", "Keyboard Trainer"):
 			addon.requestRemove()

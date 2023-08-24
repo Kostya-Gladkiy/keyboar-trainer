@@ -44,7 +44,8 @@ spec = (
     "maximum number of characters in English 4 = integer(default=0)",
     "maximum number of characters in numerical dictation = integer(default=0)",
     "maximum number of characters in capital letters dictation = integer(default=0)",
-    "maximum number of characters in text dictation in Ukrainian = integer(default=0)",
+    "maximum number of characters in dictation of sentences with punctuation marks = integer(default=0)",
+    "maximum number of characters in sentences dictation in Ukrainian = integer(default=0)",
     "maximum number of characters in punctuation dictation = integer(default=0)",
 )
 

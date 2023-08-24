@@ -48,6 +48,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     # Метод, який виконується при натисненні клавіш
     def executeGesture(self, gesture):
+        # В жестах, які виконуються на сенсорному екрані немає властивості _keyNamesInDisplayOrder, тому ми додаємо її щоб не було помилок
+        if not hasattr(gesture, "_keyNamesInDisplayOrder"):
+            gesture._keyNamesInDisplayOrder = None
         # print(gesture.displayName)
         # print(gesture.vkCode)
         # print(gesture.scanCode)

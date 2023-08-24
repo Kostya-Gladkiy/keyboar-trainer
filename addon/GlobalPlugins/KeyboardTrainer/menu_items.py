@@ -5,11 +5,11 @@ from .lessons import *
 
 
 UkrainianSymbolicDictationMenu.items = (
-    {
-        "name": "Теорія символьних диктантів",
-        "obj": TheoryOfSymbolicDictation,
-        "type": "theory",
-    },
+    # {
+    #     "name": "Теорія символьних диктантів",
+    #     "obj": TheoryOfSymbolicDictation,
+    #     "type": "theory",
+    # },
     {
         "name": "Диктант літер основного ряду",
         "obj": BySymbolicDictationUkraine1,
@@ -128,8 +128,13 @@ MainMenu.items = [
         "type": "lesson",
     },
     {
-        "name": "Диктант тексту",
-        "obj": TextDictation,
+        "name": "Диктант речень",
+        "obj": DictationOfSentences,
+        "type": "lesson",
+    },
+    {
+        "name": "Диктант речень зі знаками пунктуації",
+        "obj": DictationSentencesWithPunctuationMarks,
         "type": "lesson",
     },
 ]
