@@ -9,6 +9,7 @@ import time
 import random
 import os
 import ctypes
+from ctypes import wintypes
 
 import speech
 import api
@@ -16,6 +17,26 @@ import config
 from nvwave import playWaveFile
 
 sys.path.insert(0, ".")
+
+
+# Оголошуємо прототипи функцій WinAPI.
+# Без цього ctypes вважає, що функція повертає 32-бітний int, і в 64-бітній NVDA (2026 і новіші)
+# дескриптор розкладки (HKL) обрізається до 32 бітів. Для англійської розкладки HKL має вигляд
+# 0x0000000004090409 і вміщається в 32 біти, а для української — 0xFFFFFFFFF0A80422, тому
+# обрізаний дескриптор ставав недійсним і ToUnicodeEx не повертала жодного символу.
+_user32 = ctypes.windll.user32
+_user32.GetKeyboardLayout.argtypes = [wintypes.DWORD]
+_user32.GetKeyboardLayout.restype = wintypes.HKL
+_user32.ToUnicodeEx.argtypes = [
+	wintypes.UINT,
+	wintypes.UINT,
+	ctypes.POINTER(ctypes.c_byte * 256),
+	wintypes.LPWSTR,
+	ctypes.c_int,
+	wintypes.UINT,
+	wintypes.HKL,
+]
+_user32.ToUnicodeEx.restype = ctypes.c_int
 
 
 def levenshtein_distance(s, t):
@@ -48,6 +69,7 @@ class Category:
 	"""
 	symbols_description = symbols_description
 	time_start = False
+	time_start_last_message = None
 	time_last_error = 0
 	key_in_config_max_count = False
 	mistakes = []
@@ -107,7 +129,12 @@ class Category:
 			MainMenu.exit(MainMenu)
 
 	def input_action(self, ch):
-		pass
+		speech.cancelSpeech()
+		if self.time_start_last_message:
+			# Визначаємо час, який пройшов з моменту озвучення останнього речення, до натискання клавіші
+			# Додаємо цей час до часу початку диктанту, щоб продовжити диктант на ті секунди, які були витрачені на озвучення речень
+			self.time_start += (time.time() - self.time_start_last_message)
+			self.time_start_last_message = None
 
 	def keys_action(self, gesture):
 		char = self.char_from_gesture(gesture)
@@ -128,9 +155,9 @@ class Category:
 				return False
 		charBuf = ctypes.create_unicode_buffer(6)
 		focus = api.getFocusObject()
-		hkl = ctypes.windll.user32.GetKeyboardLayout(focus.windowThreadID)
-		res = ctypes.windll.user32.ToUnicodeEx(
-			gesture.vkCode, gesture.scanCode, keyStates, charBuf, len(charBuf), 0x4, hkl)
+		hkl = _user32.GetKeyboardLayout(focus.windowThreadID)
+		res = _user32.ToUnicodeEx(
+			gesture.vkCode, gesture.scanCode, ctypes.byref(keyStates), charBuf, len(charBuf), 0x4, hkl)
 		keyStates = False
 		char = ""
 		if res > 0:
@@ -217,29 +244,28 @@ class ByWordsDictation(Category):
 			super().keys_action(gesture)
 
 	def input_action(self, ch):
-		speech.cancelSpeech()
 		if ch == " " and self.entered_text == self.word:
 			self.successfuls.append(self.entered_text)
 			playWaveFile(BASE_DIR+"/media/success.wav")
 			self.entered_text = ""
 			self.next_word()
-
 			def s():
 				if not self.is_finish():
 					message(self.word)
+					# self.time_start_last_message = time.time()
 			Timer(.1, s).start()
 		elif ch == " " and self.entered_text != self.word:
 			is_second_click = True if time.time(
 			) - self.time_last_error <= .5 and self.time_last_error else False
 			self.time_last_error = time.time()
-			if self.entered_text != "":
+			if self.entered_text:
 				def calculate_errors():
 					self.mistakes.append(
 					"#"*levenshtein_distance(self.word, self.entered_text))
 				threading.Thread(target=calculate_errors).start()
+				self.next_word()
 			self.entered_text = ""
 			playWaveFile(BASE_DIR+"/media/error.wav")
-
 			def s():
 				if self.is_finish():
 					return
@@ -288,20 +314,26 @@ class BySymbolicDictation(Category):
 	Також від нього наслідується клас диктанту знаків пунктуації.
 	"""
 	char = ""
+	# Список усіх можливих символів в конкретному диктанті
 	chars = ""
+	# Список символів, з яких буде обиратись один рандовмний.
+	list_chars = []
 	message_on_startup = "Диктант літер увімкнено"
 
 	def __init__(self):
 		super().__init__()
-		self.chars = list(self.chars)
-		random.shuffle(self.chars)
 		self.char = self.next_char()
 		message(self.message_on_startup)
 		message("Ставимо руки на стартову позицію і починаємо")
 		speakChar(self.char)
 
+	def set_chars(self):
+			self.list_chars = list(self.chars*3)
+			random.shuffle(self.list_chars)
+	
 	def next_char(self):
-		self.char = random.choice(self.chars)
+		if not self.list_chars: self.set_chars()
+		self.char = self.list_chars.pop()
 		return self.char
 
 	def report_location_of_symbol(self):
@@ -319,17 +351,17 @@ class BySymbolicDictation(Category):
 			super().keys_action(gesture)
 
 	def input_action(self, ch):
-		speech.cancelSpeech()
+		# super().input_action(ch)
 		if self.char == ch:
 			self.start_timer()
 			self.successfuls.append(ch)
 			playWaveFile(BASE_DIR+"/media/success.wav")
 			self.next_char()
-
 			def s():
 				if self.is_finish():
 					return
 				speakChar(self.char)
+				# self.time_start_last_message = time.time()
 			Timer(.2, s).start()
 		else:
 			is_second_click = True if time.time(
@@ -357,7 +389,7 @@ class BySymbolicDictationUkraine1(BySymbolicDictation):
 
 class BySymbolicDictationUkraine2(BySymbolicDictation):
 	key_in_config_max_count = "maximum number of characters in Ukrainian 2"
-	chars = "йцукенгшщзхїґ"*3+"фівапролджє"
+	chars = "йцукенгшщзхї"*3+"фівапролджє"
 
 
 class BySymbolicDictationUkraine3(BySymbolicDictation):
@@ -367,7 +399,7 @@ class BySymbolicDictationUkraine3(BySymbolicDictation):
 
 class BySymbolicDictationUkraine4(BySymbolicDictation):
 	key_in_config_max_count = "maximum number of characters in Ukrainian 4"
-	chars = "йцукенгшщхїфівапролджєячсмитьбюґ"
+	chars = "йцукенгшщхїфівапролджєячсмитьбю"
 
 
 class BySymbolicDictationEnglish1(BySymbolicDictation):
@@ -440,6 +472,7 @@ class DictationSentencesWithPunctuationMarks(Category):
 		super().exit()
 
 	def input_action(self, ch):
+		super().input_action(ch)
 		if ch == self.sentence[0][0]:
 			self.start_timer()
 			self.successfuls.append(ch)
@@ -460,11 +493,11 @@ class DictationSentencesWithPunctuationMarks(Category):
 			def s():
 				if not self.is_finish():
 					message(self.sentence[0])
+					self.time_start_last_message = time.time()
 			Timer(.1, s).start()
 			# try:
 				# message(self.sentence[0])
 			# except Exception as e:
-				# print(e)
 		if not self.sentence:
 			self.exit()
 
@@ -503,10 +536,10 @@ class DictationOfSentences(Category):
 			playWaveFile(BASE_DIR+"/media/success.wav")
 			self.entered_text = ""
 			self.next_sentence()
-
 			def s():
 				if not self.is_finish():
 					message(self.sentence)
+					self.time_start_last_message = time.time()
 			Timer(.1, s).start()
 
 	def keys_action(self, gesture):
@@ -526,7 +559,7 @@ class DictationOfSentences(Category):
 			super().keys_action(gesture)
 
 	def input_action(self, ch):
-		speech.cancelSpeech()
+		super().input_action(ch)
 		self.start_timer()
 		word = self.entered_text.split(" ")[-1]
 		if ch != " ":
@@ -545,7 +578,6 @@ class DictationOfSentences(Category):
 			last_word = self.entered_text.split(" ")[-1]
 			last_word_without_fail = self.sentence.split(" ")[count_words-1]
 			words = self.entered_text.split(" ")[:-1]
-
 			def calculate_errors(a, b):
 					self.mistakes.append("#"*levenshtein_distance(a, b))
 			threading.Thread(target=calculate_errors, args=[last_word_without_fail, last_word]).start()

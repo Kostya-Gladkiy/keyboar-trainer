@@ -39,14 +39,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         super(GlobalPlugin, self).__init__()
         # В класі Game зберігаємо посилання на клас головного меню, щоб мати доступ до основного меню в інших файлах
         Game.MainMenu = MainMenu
-        # Зберігаємо посилання на оригінальний метод, який обробляє натиснення клавіш
-        self._executeGesture = inputCore.manager.executeGesture
-        # Перевизначаємо метод, який спрацьовує при натисненні клавіш
-        inputCore.manager.executeGesture = self.executeGesture
+        # Реєструємо обробник у точці розширення decide_executeGesture замість підміни inputCore.manager.executeGesture.
+        # Інші додатки (наприклад NVDAExtensionGlobalPlugin) підміняють executeGesture і не викликають попередній обробник,
+        # а decide_executeGesture викликають і ядро NVDA, і вони.
+        inputCore.decide_executeGesture.register(self.executeGesture)
         # В окремому потоці перевіряємо наявність оновлень
         threading.Thread(target=ApplicationUpdater.onCheckForUpdates).start()
 
-    # Метод, який виконується при натисненні клавіш
+    def terminate(self):
+        inputCore.decide_executeGesture.unregister(self.executeGesture)
+        super(GlobalPlugin, self).terminate()
+
+    # Метод, який виконується при натисненні клавіш.
+    # Повертає True, якщо NVDA має обробити жест як звичайно, і False, якщо тренажер його перехопив
     def executeGesture(self, gesture):
         # В жестах, які виконуються на сенсорному екрані немає властивості _keyNamesInDisplayOrder, тому ми додаємо її щоб не було помилок
         if not hasattr(gesture, "_keyNamesInDisplayOrder"):
@@ -58,7 +63,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         
         # Перевіряємо чи була натиснута комбінація клавіш, яка вмикає і вимикає роботу тренажера
         # Якщо ні, тоді викликаємо стандартну функцію обробки натиснення клавіш
-        if gesture._keyNamesInDisplayOrder == ("shift", "NVDA", "k"):
+        if gesture._keyNamesInDisplayOrder == ("NVDA", "shift", "k"):
             speech.cancelSpeech()
             Game.toggling = not Game.toggling
             if Game.toggling:
@@ -68,11 +73,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 # В іншому випадку просто активуємо головне меню
                 if ApplicationUpdater.is_update_available: Game.state = MenuUpdate()
                 else: Game.state = MainMenu()
-                return
+                return False
             else:
                 # Викликаємо метод виходу активного на даний момент розділу, щоб він в свою чергу викликав даний метод по ланцюжку вверх
                 if Game.state: Game.state.exit()
-                return
+                return False
         if Game.toggling and Game.state:
             speech.cancelSpeech()
             isLanguageSwich = True if gesture._keyNamesInDisplayOrder in (("alt", "leftShift"), ("control", "leftShift")) else False
@@ -80,11 +85,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             if isLanguageSwich:
                 gesture.SPEECHEFFECT_CANCEL = False
                 gesture.send()
+                return False
             elif not isinstance(Game.state, PositionFingersOnKeys) and gesture._keyNamesInDisplayOrder[0] in ("leftControl", "rightControl", "leftShift", "rightShift"):
-                # gesture.send()
-                self._executeGesture(gesture)
+                return True
             else: 
                 Game.state.keys_action(gesture)
-        else:
-            self._executeGesture(gesture)
-            # queueHandler.queueFunction(queueHandler.eventQueue, self._executeGesture, gesture)
+                return False
+        return True
+

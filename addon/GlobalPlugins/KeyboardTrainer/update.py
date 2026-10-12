@@ -18,7 +18,7 @@ class ApplicationUpdater:
     
     def onCheckForUpdates():
         import versionInfo
-        NVDAVersion = f"{versionInfo.version_year}.{versionInfo.version_major}.{versionInfo.version_minor}"
+        NVDAVersion = versionInfo.version_detailed
         NVDAVersion = int(NVDAVersion.replace(".", ""))
         fp = os.path.join(globalVars.appArgs.configPath, "keys.nvda-addon")
         addon_version = addonHandler.getCodeAddon().manifest["version"]
