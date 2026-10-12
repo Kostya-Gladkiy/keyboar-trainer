@@ -64,6 +64,10 @@ class Menu:
                     item	["description"] = "Ваш рекорд: "+str(value)+" символів за хвилину"
     
     def activate_item(self):
+        # Поки жоден пункт не вибрано, active_menu_item дорівнює -1, і self.items[-1] відкрив би останній пункт
+        if self.active_menu_item == -1:
+            message("Для переходу між пунктами меню використовуйте стрілочку вверх і стрілочку вниз")
+            return
         Menu.saved_positions[self.name] = self.active_menu_item
         playWaveFile(BASE_DIR+"/media/enterMenu.wav")
         item = self.items[self.active_menu_item]
